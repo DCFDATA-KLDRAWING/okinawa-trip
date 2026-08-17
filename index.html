@@ -23,11 +23,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
-  <!--
-  <!-- Chosen Palette: Slate Warm Neutrals with Sky Blue accents & Indigo sync indicators -->
-  <!-- Application Structure Plan: Standalone single-file HTML SPA designed for direct GitHub Web UI drag-and-drop upload and instant GitHub Pages deployment without any build tools or terminal commands. Supports dual view (Mobile Cards / Desktop Table), Google Maps navigation, MapCode copy, and live cloud sync using user's mytokyotrip Firebase backend. -->
-  <!-- Visualization & Content Choices: Card containers with clear typographic hierarchy, map badges, Google Maps navigation links, and MapCode one-tap copy functionality. -->
-  <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
   <style>
     /* Custom scrollbar & font enhancements */
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
@@ -219,4 +214,580 @@
       };
 
       const showToast = (message) => {
-       
+        setToast({ show: true, message });
+        setTimeout(() => setToast({ show: false, message: '' }), 2800);
+      };
+
+      const handleCopyText = (text, msg, e) => {
+        if (e) e.stopPropagation();
+        navigator.clipboard.writeText(text);
+        showToast(msg);
+      };
+
+      const handleShareGroup = () => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('group', groupId);
+        navigator.clipboard.writeText(url.toString());
+        showToast(`群組 [${groupId}] 專用連結已複製！傳送給朋友即可同步編輯。`);
+      };
+
+      const handleSwitchGroup = (targetGroup) => {
+        if (!targetGroup.trim()) return;
+        const cleanGroup = targetGroup.trim();
+        setGroupId(cleanGroup);
+
+        const url = new URL(window.location.href);
+        url.searchParams.set('group', cleanGroup);
+        window.history.pushState({}, '', url.toString());
+
+        setShowGroupModal(false);
+        showToast(`已成功切換至群組: ${cleanGroup}`);
+      };
+
+      const handleDeleteRow = () => {
+        if (deleteIndex !== null) {
+          const newData = [...itineraryData];
+          newData.splice(deleteIndex, 1);
+          saveToCloud(newData);
+          setShowDeleteModal(false);
+          setDeleteIndex(null);
+          showToast("行程項目已成功刪除！");
+        }
+      };
+
+      const handleAddRow = () => {
+        const newRow = {
+          day: activeTab !== 'ALL' && activeTab !== 'VOUCHERS' ? activeTab : "D1",
+          date: "08/22 (六)",
+          type: "景點",
+          time: "12:00",
+          item: "新行程項目",
+          location: "沖繩地點",
+          mapcode: "",
+          note: "點擊此處編輯行程備註...",
+          mapUrl: ""
+        };
+        const newData = [...itineraryData, newRow];
+        saveToCloud(newData);
+        showToast("已新增空白行程項目");
+      };
+
+      const downloadJSON = () => {
+        const dataToSave = { groupId, itinerary: itineraryData, vouchers: voucherData };
+        const blob = new Blob([JSON.stringify(dataToSave, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `okinawa_itinerary_${groupId}.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast("行程資料 (JSON) 已成功匯出！");
+      };
+
+      const handleFileUpload = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const parsedData = JSON.parse(e.target.result);
+            const importedItinerary = parsedData.itinerary || (Array.isArray(parsedData) ? parsedData : null);
+            const importedVouchers = parsedData.vouchers || voucherData;
+
+            if (importedItinerary && Array.isArray(importedItinerary)) {
+              saveToCloud(importedItinerary, importedVouchers);
+              showToast("行程資料已成功匯入並同步至雲端！");
+            } else {
+              showToast("無效的 JSON 檔案格式");
+            }
+          } catch (error) {
+            showToast("解析檔案失敗，請確認上傳格式。");
+          }
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        };
+        reader.readAsText(file);
+      };
+
+      const getBadgeStyle = (type) => {
+        switch(type) {
+          case "航班": return "bg-amber-100 text-amber-800 border-amber-300";
+          case "租車": return "bg-teal-100 text-teal-800 border-teal-300";
+          case "景點": return "bg-emerald-100 text-emerald-800 border-emerald-300";
+          case "美食": return "bg-orange-100 text-orange-800 border-orange-300";
+          case "飯店": return "bg-sky-100 text-sky-800 border-sky-300";
+          case "購物": return "bg-purple-100 text-purple-800 border-purple-300";
+          default: return "bg-slate-100 text-slate-700 border-slate-300";
+        }
+      };
+
+      const filteredItinerary = useMemo(() => {
+        return itineraryData.filter(item => {
+          const matchesTab = activeTab === 'ALL' || item.day === activeTab;
+          const matchesCategory = categoryFilter === 'ALL' || item.type === categoryFilter;
+          const q = searchQuery.toLowerCase().trim();
+          const matchesSearch = !q || 
+            item.item.toLowerCase().includes(q) ||
+            item.location.toLowerCase().includes(q) ||
+            item.note.toLowerCase().includes(q) ||
+            item.mapcode.toLowerCase().includes(q);
+
+          return matchesTab && matchesCategory && matchesSearch;
+        });
+      }, [itineraryData, activeTab, categoryFilter, searchQuery]);
+
+      return (
+        <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans pb-10">
+          
+          {/* Toast Notification */}
+          <div className={`fixed top-4 left-1/2 -translate-x-1/2 md:left-auto md:right-5 md:translate-x-0 z-50 transform transition-all duration-300 flex items-center space-x-2 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-700 max-w-[90vw] ${
+            toast.show ? 'translate-y-0 opacity-100 scale-100' : '-translate-y-12 opacity-0 scale-95 pointer-events-none'
+          }`}>
+            <span className="text-emerald-400 font-bold">✓</span>
+            <span className="text-xs sm:text-sm font-medium">{toast.message}</span>
+          </div>
+
+          {/* Header */}
+          <header className="bg-slate-900 text-white sticky top-0 z-40 shadow-md border-b border-slate-800">
+            <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+              
+              <div className="flex items-center justify-between w-full md:w-auto">
+                <h1 className="text-base sm:text-xl font-bold tracking-tight text-white flex items-center">
+                  🌺 沖繩 6天5夜行程表
+                </h1>
+
+                <div className="md:hidden flex items-center">
+                  {isSyncing ? (
+                    <span className="text-amber-400 text-xs flex items-center animate-pulse">
+                      🔄 同步中...
+                    </span>
+                  ) : isCloudConnected ? (
+                    <span className="bg-emerald-500/20 text-emerald-300 text-[11px] px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center">
+                      🟢 實時連線中
+                    </span>
+                  ) : (
+                    <span className="bg-amber-500/20 text-amber-300 text-[11px] px-2 py-0.5 rounded-full border border-amber-500/30">
+                      離線
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2 w-full md:w-auto justify-between md:justify-end overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+                <button
+                  onClick={() => { setShowGroupModal(true); setNewGroupIdInput(groupId); }}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-sm flex items-center space-x-1 transition border border-indigo-400 whitespace-nowrap"
+                >
+                  <span>👥 群組: {groupId}</span>
+                  <span className="text-indigo-200">🔄</span>
+                </button>
+
+                <button 
+                  onClick={handleShareGroup}
+                  className="bg-indigo-900/80 hover:bg-indigo-800 text-indigo-200 text-xs px-2.5 py-1.5 rounded-xl font-medium transition flex items-center space-x-1 border border-indigo-700/60 whitespace-nowrap"
+                >
+                  <span>🔗 分享</span>
+                </button>
+
+                <input type="file" accept=".json" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
+
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-2.5 py-1.5 rounded-xl font-medium border border-slate-700 transition flex items-center space-x-1 whitespace-nowrap"
+                >
+                  <span>📤 匯入</span>
+                </button>
+
+                <button 
+                  onClick={downloadJSON}
+                  className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs px-2.5 py-1.5 rounded-xl font-medium transition flex items-center space-x-1 whitespace-nowrap"
+                >
+                  <span>📥 匯出</span>
+                </button>
+              </div>
+
+            </div>
+          </header>
+
+          <main className="max-w-7xl mx-auto px-3 sm:px-6 py-4 flex-grow w-full">
+
+            {/* Filter Bar */}
+            <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-slate-200 mb-4 space-y-3">
+              
+              {/* Day Tabs */}
+              <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 scrollbar-none">
+                {[
+                  { id: 'ALL', label: '全部' },
+                  { id: 'D1', label: 'D1 (8/22)' },
+                  { id: 'D2', label: 'D2 (8/23)' },
+                  { id: 'D3', label: 'D3 (8/24)' },
+                  { id: 'D4', label: 'D4 (8/25)' },
+                  { id: 'D5', label: 'D5 (8/26)' },
+                  { id: 'D6', label: 'D6 (8/27)' },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                      activeTab === tab.id ? 'bg-sky-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+
+                <button
+                  onClick={() => setActiveTab('VOUCHERS')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center space-x-1 ${
+                    activeTab === 'VOUCHERS' ? 'bg-purple-700 text-white shadow-sm' : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+                  }`}
+                >
+                  <span>🎟️ 訂單與憑證</span>
+                </button>
+              </div>
+
+              {/* View & Search */}
+              {activeTab !== 'VOUCHERS' && (
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                  
+                  <div className="flex items-center space-x-2">
+                    <div className="bg-slate-100 p-1 rounded-xl flex items-center border border-slate-200">
+                      <button
+                        onClick={() => setViewMode('card')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center space-x-1 transition ${
+                          viewMode === 'card' ? 'bg-white text-sky-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        <span>📱 卡片</span>
+                      </button>
+                      <button
+                        onClick={() => setViewMode('table')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center space-x-1 transition ${
+                          viewMode === 'table' ? 'bg-white text-sky-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        <span>💻 表格</span>
+                      </button>
+                    </div>
+
+                    <select
+                      value={categoryFilter}
+                      onChange={(e) => setCategoryFilter(e.target.value)}
+                      className="pl-3 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 transition cursor-pointer"
+                    >
+                      <option value="ALL">全部類別</option>
+                      <option value="景點">景點</option>
+                      <option value="美食">美食</option>
+                      <option value="購物">購物</option>
+                      <option value="飯店">飯店</option>
+                      <option value="租車">租車</option>
+                      <option value="航班">航班</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="🔍 搜尋行程、MapCode..."
+                      className="w-full sm:w-52 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-sky-500 transition"
+                    />
+
+                    <button 
+                      onClick={handleAddRow}
+                      className="px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-bold transition flex items-center justify-center shadow-sm whitespace-nowrap"
+                    >
+                      <span>➕ 新增</span>
+                    </button>
+                  </div>
+
+                </div>
+              )}
+            </div>
+
+            {/* Main Content */}
+            {activeTab !== 'VOUCHERS' ? (
+              <div>
+                {filteredItinerary.length === 0 ? (
+                  <div className="bg-white rounded-2xl p-10 text-center text-slate-400 border border-slate-200 shadow-sm">
+                    <p className="text-sm font-medium">找不到符合條件的行程項目</p>
+                  </div>
+                ) : viewMode === 'card' ? (
+                  /* CARD VIEW */
+                  <div className="space-y-3">
+                    {filteredItinerary.map((row, idx) => {
+                      const originalIndex = itineraryData.indexOf(row);
+                      const updateField = (field, value) => {
+                        const newData = [...itineraryData];
+                        newData[originalIndex] = { ...newData[originalIndex], [field]: value };
+                        saveToCloud(newData);
+                      };
+
+                      const googleMapTargetUrl = row.mapUrl && row.mapUrl.trim() !== '' 
+                        ? row.mapUrl 
+                        : generateGoogleMapsUrl(row.item, row.location);
+
+                      return (
+                        <div key={originalIndex} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 relative">
+                          <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 gap-2">
+                            <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                              <span className="bg-slate-800 text-slate-100 text-[11px] font-bold px-2 py-0.5 rounded-lg">
+                                {row.day} | {row.date}
+                              </span>
+
+                              <select 
+                                className={`border border-transparent px-2 py-0.5 rounded-lg text-[11px] font-bold cursor-pointer ${getBadgeStyle(row.type)}`}
+                                value={row.type}
+                                onChange={(e) => updateField('type', e.target.value)}
+                              >
+                                <option value="航班">航班</option>
+                                <option value="租車">租車</option>
+                                <option value="景點">景點</option>
+                                <option value="美食">美食</option>
+                                <option value="飯店">飯店</option>
+                                <option value="購物">購物</option>
+                              </select>
+
+                              <span className="text-slate-500 text-xs font-semibold">
+                                🕒 <input 
+                                  type="text" 
+                                  className="bg-transparent border hover:border-slate-300 focus:border-sky-500 px-1 py-0.5 rounded text-xs text-slate-700 font-semibold w-28"
+                                  value={row.time} 
+                                  onChange={(e) => updateField('time', e.target.value)} 
+                                />
+                              </span>
+                            </div>
+
+                            <button
+                              onClick={() => { setDeleteIndex(originalIndex); setShowDeleteModal(true); }}
+                              className="text-slate-400 hover:text-rose-600 p-1 rounded-lg"
+                              title="刪除"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+
+                          <div className="mb-2">
+                            <input 
+                              type="text" 
+                              className="w-full bg-transparent border border-transparent hover:border-slate-200 focus:border-sky-500 focus:bg-slate-50 px-1 py-0.5 rounded text-base font-bold text-slate-900"
+                              value={row.item} 
+                              onChange={(e) => updateField('item', e.target.value)} 
+                              placeholder="行程名稱"
+                            />
+                          </div>
+
+                          <div className="flex items-center text-xs text-slate-600 mb-3">
+                            <span className="mr-1">📍</span>
+                            <input 
+                              type="text" 
+                              className="w-full bg-transparent border border-transparent hover:border-slate-200 focus:border-sky-500 focus:bg-slate-50 px-1 py-0.5 rounded text-xs text-slate-600"
+                              value={row.location} 
+                              onChange={(e) => updateField('location', e.target.value)} 
+                              placeholder="地點位置"
+                            />
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 mb-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                            <div className="flex items-center space-x-1.5 flex-grow sm:flex-grow-0">
+                              <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">MAPCODE</span>
+                              <input 
+                                type="text" 
+                                className="w-28 bg-white border border-amber-200 focus:border-amber-500 px-2 py-1 rounded text-xs font-mono font-bold text-amber-900"
+                                value={row.mapcode} 
+                                onChange={(e) => updateField('mapcode', e.target.value)} 
+                                placeholder="MapCode"
+                              />
+                              {row.mapcode && (
+                                <button
+                                  onClick={(e) => handleCopyText(row.mapcode, `MapCode [ ${row.mapcode} ] 已複製！`, e)}
+                                  className="bg-amber-100 text-amber-900 px-2 py-1 rounded-lg text-xs font-bold"
+                                >
+                                  複製
+                                </button>
+                              )}
+                            </div>
+
+                            <a
+                              href={googleMapTargetUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 sm:flex-none inline-flex items-center justify-center space-x-1 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-xl"
+                            >
+                              <span>🗺️ Google 地圖導航 ↗</span>
+                            </a>
+                          </div>
+
+                          <textarea 
+                            className="w-full bg-slate-50/70 border border-slate-200 hover:border-slate-300 focus:border-sky-500 focus:bg-white p-2 rounded-xl text-xs text-slate-700 leading-relaxed resize-y min-h-[50px]"
+                            value={row.note} 
+                            onChange={(e) => updateField('note', e.target.value)} 
+                            placeholder="備註說明..."
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* TABLE VIEW */
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                      <thead>
+                        <tr className="bg-slate-900 text-slate-200 uppercase text-[11px] border-b border-slate-800">
+                          <th className="py-3 px-3 w-24">日期</th>
+                          <th className="py-3 px-2 w-20">類別</th>
+                          <th className="py-3 px-2 w-24">時間</th>
+                          <th className="py-3 px-3 w-48">行程項目</th>
+                          <th className="py-3 px-3 w-32">地點</th>
+                          <th className="py-3 px-3 w-32 text-center">MAP CODE</th>
+                          <th className="py-3 px-3 w-36 text-center">GOOGLE MAPS</th>
+                          <th className="py-3 px-3 min-w-[200px]">備註說明</th>
+                          <th className="py-3 px-2 w-12 text-center">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredItinerary.map((row, idx) => {
+                          const originalIndex = itineraryData.indexOf(row);
+                          const updateField = (field, value) => {
+                            const newData = [...itineraryData];
+                            newData[originalIndex] = { ...newData[originalIndex], [field]: value };
+                            saveToCloud(newData);
+                          };
+
+                          const googleMapTargetUrl = row.mapUrl && row.mapUrl.trim() !== '' 
+                            ? row.mapUrl 
+                            : generateGoogleMapsUrl(row.item, row.location);
+
+                          return (
+                            <tr key={originalIndex} className="hover:bg-sky-50/50 border-b border-slate-100">
+                              <td className="py-2 px-2">
+                                <input type="text" className="w-full bg-transparent font-bold text-xs" value={row.date} onChange={(e) => updateField('date', e.target.value)} />
+                              </td>
+                              <td className="py-2 px-2">
+                                <select className={`w-full text-[11px] font-semibold rounded p-1 ${getBadgeStyle(row.type)}`} value={row.type} onChange={(e) => updateField('type', e.target.value)}>
+                                  <option value="航班">航班</option>
+                                  <option value="租車">租車</option>
+                                  <option value="景點">景點</option>
+                                  <option value="美食">美食</option>
+                                  <option value="飯店">飯店</option>
+                                  <option value="購物">購物</option>
+                                </select>
+                              </td>
+                              <td className="py-2 px-2">
+                                <input type="text" className="w-full bg-transparent text-xs" value={row.time} onChange={(e) => updateField('time', e.target.value)} />
+                              </td>
+                              <td className="py-2 px-2">
+                                <input type="text" className="w-full bg-transparent text-sm font-bold text-slate-900" value={row.item} onChange={(e) => updateField('item', e.target.value)} />
+                              </td>
+                              <td className="py-2 px-2">
+                                <input type="text" className="w-full bg-transparent text-xs text-slate-600" value={row.location} onChange={(e) => updateField('location', e.target.value)} />
+                              </td>
+                              <td className="py-2 px-2 text-center">
+                                <div className="flex items-center justify-center">
+                                  <input type="text" className="w-24 bg-amber-50 border border-amber-200 px-1 py-0.5 rounded text-xs font-mono font-bold text-amber-800 text-center" value={row.mapcode} onChange={(e) => updateField('mapcode', e.target.value)} />
+                                  {row.mapcode && (
+                                    <button onClick={(e) => handleCopyText(row.mapcode, `MapCode [ ${row.mapcode} ] 已複製！`, e)} className="ml-1 text-amber-700 font-bold">📋</button>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-2 px-2 text-center">
+                                <a href={googleMapTargetUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg">
+                                  🗺️ 導航 ↗
+                                </a>
+                              </td>
+                              <td className="py-2 px-2">
+                                <textarea className="w-full bg-transparent text-xs resize-none h-8 focus:h-16" value={row.note} onChange={(e) => updateField('note', e.target.value)} />
+                              </td>
+                              <td className="py-2 px-2 text-center">
+                                <button onClick={() => { setDeleteIndex(originalIndex); setShowDeleteModal(true); }} className="text-slate-400 hover:text-rose-600">🗑️</button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* VOUCHERS VIEW */
+              <div className="space-y-3">
+                <div className="p-4 bg-purple-900 text-white font-bold rounded-2xl flex justify-between items-center shadow-sm">
+                  <span>🎟️ 住宿飯店與 ORIX 租車憑證資訊</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {voucherData.map((v, idx) => (
+                    <div key={idx} className="bg-white p-4 rounded-2xl border border-purple-100 shadow-sm space-y-2">
+                      <div className="flex justify-between items-start">
+                        <span className="bg-purple-100 text-purple-900 font-bold text-xs px-2.5 py-1 rounded-lg">{v.cat}</span>
+                        <span className="text-emerald-700 text-xs font-bold bg-emerald-50 px-2 py-0.5 rounded">{v.cost.split('\n')[0]}</span>
+                      </div>
+                      <h3 className="font-bold text-slate-900 text-sm sm:text-base">{v.name}</h3>
+                      <div className="bg-slate-50 p-2.5 rounded-xl border text-xs font-mono whitespace-pre-line">{v.plat}</div>
+                      <div className="text-xs text-slate-600 space-y-1">
+                        <p>📅 日期: {v.dates.replace('\n', ' ')}</p>
+                        <p className="whitespace-pre-line">📞 聯絡: {v.contact}</p>
+                      </div>
+                      <div className="pt-2 flex justify-end">
+                        <a href={v.mapUrl} target="_blank" rel="noopener noreferrer" className="text-purple-700 bg-purple-50 border border-purple-200 px-3 py-1.5 rounded-xl text-xs font-bold">
+                          開啟 Google 地圖 ↗
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </main>
+
+          {/* Group Switch Modal */}
+          {showGroupModal && (
+            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+                <button onClick={() => setShowGroupModal(false)} className="absolute right-4 top-4 text-slate-400">✕</button>
+                <h2 className="text-lg font-bold text-indigo-600 mb-2">👥 切換或建立共用群組</h2>
+                <p className="text-xs text-slate-500 mb-4">輸入相同的群組代號（如：okinawa2026），所有人即可即時共同編輯！</p>
+                <input 
+                  type="text" 
+                  value={newGroupIdInput} 
+                  onChange={(e) => setNewGroupIdInput(e.target.value)} 
+                  placeholder="如: okinawa2026"
+                  className="w-full px-3 py-2 bg-slate-50 border rounded-xl text-sm font-mono font-bold mb-4"
+                />
+                <div className="flex space-x-2 justify-end">
+                  <button onClick={() => setShowGroupModal(false)} className="px-4 py-2 text-xs font-medium text-slate-600">取消</button>
+                  <button onClick={() => handleSwitchGroup(newGroupIdInput)} className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-xl">進入群組</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Delete Confirm Modal */}
+          {showDeleteModal && (
+            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl">
+                <h3 className="text-base font-bold text-slate-900 mb-2">確定要刪除此行程項目？</h3>
+                <p className="text-xs text-slate-500 mb-5">刪除後變更將會同步更新給目前群組中的所有人。</p>
+                <div className="flex space-x-2 justify-end">
+                  <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 text-xs font-medium text-slate-600">取消</button>
+                  <button onClick={handleDeleteRow} className="px-4 py-2 text-xs font-bold text-white bg-rose-600 rounded-xl">確認刪除</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <footer className="bg-slate-900 text-slate-400 py-6 text-center text-xs mt-8">
+            <p>沖繩 6天5夜 協同編輯行程表 ｜ Google Maps 導航 ｜ 手機卡片 ＆ 電腦表格</p>
+          </footer>
+
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
