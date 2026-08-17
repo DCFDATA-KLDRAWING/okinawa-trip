@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🌺 沖繩 6天5夜行程表 (多人雲端同步版)</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React 18 & ReactDOM CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel for inline JSX compilation -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Firebase v9 Compatibility SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+  <!--
+  <!-- Chosen Palette: Slate Warm Neutrals with Sky Blue accents & Indigo sync indicators -->
+  <!-- Application Structure Plan: Standalone single-file HTML SPA designed for direct GitHub Web UI drag-and-drop upload and instant GitHub Pages deployment without any build tools or terminal commands. Supports dual view (Mobile Cards / Desktop Table), Google Maps navigation, MapCode copy, and live cloud sync using user's mytokyotrip Firebase backend. -->
+  <!-- Visualization & Content Choices: Card containers with clear typographic hierarchy, map badges, Google Maps navigation links, and MapCode one-tap copy functionality. -->
+  <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+  -->
+  <style>
+    /* Custom scrollbar & font enhancements */
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .scrollbar-none::-webkit-scrollbar { display: none; }
+    .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo, useRef, useEffect } = React;
+
+    // 🔑 整合使用者提供之 Firebase Config (mytokyotrip)
+    const firebaseConfig = {
+      apiKey: "AIzaSyDNlxutfCN1OJ5rJb7sHENcHvt1Wh_sbqw",
+      authDomain: "mytokyotrip.firebaseapp.com",
+      projectId: "mytokyotrip",
+      storageBucket: "mytokyotrip.firebasestorage.app",
+      messagingSenderId: "184135267451",
+      appId: "1:184135267451:web:660022ffd64c15b1a41ede",
+      measurementId: "G-2H1YFF6YPJ"
+    };
+
+    // 初始化 Firebase
+    let db = null;
+    let auth = null;
+    try {
+      if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+      }
+      auth = firebase.auth();
+      db = firebase.firestore();
+    } catch (err) {
+      console.error("Firebase Initialization Error:", err);
+    }
+
+    const defaultItineraryData = [
+      {"day": "D1", "date": "08/22 (六)", "type": "航班", "time": "16:50 - 19:20", "item": "長榮航空 BR186 (A321)", "location": "桃園 T2 ➔ 那霸 (OKA)", "mapcode": "33 113 562*45", "note": "訂位代號: DASWVQ / 行李 23kg/人", "mapUrl": "https://maps.app.goo.gl/9xN7L2K4x2x2"},
+      {"day": "D1", "date": "08/22 (六)", "type": "美食", "time": "19:50 - 20:20", "item": "Pork Tamago Onigiri 豬肉蛋飯糰", "location": "那霸機場國內線 1F", "mapcode": "33 113 562*45", "note": "入境順買：炸蝦豬肉蛋、經典原味 (營業至 21:00)", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Pork+Tamago+Onigiri+Naha+Airport"},
+      {"day": "D1", "date": "08/22 (六)", "type": "飯店", "time": "21:00 前後", "item": "那霸歌町大和Roynet PREMIER飯店 (第1晚)", "location": "那霸市歌町 4-2-14", "mapcode": "33 188 023*66", "note": "Trip.com訂單: 1616329681528003 (PIN: 9060)", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Daiwa+Roynet+Hotel+Naha-Omoromachi+Premier"},
+      {"day": "D1", "date": "08/22 (六)", "type": "購物", "time": "21:20 - 22:30", "item": "San-A 那霸 Main Place 食品館", "location": "歌町商圈 (步行6-8分)", "mapcode": "33 188 563*74", "note": "採買沖繩在地水果、鮮奶、飲料與零食伴手禮 (營業至 23:00)", "mapUrl": "https://www.google.com/maps/search/?api=1&query=San-A+Naha+Main+Place"},
+      {"day": "D1", "date": "08/22 (六)", "type": "美食", "time": "22:30 - 24:00", "item": "歌町周邊深夜料理 (三選一)", "location": "歌町周邊步行圈", "mapcode": "33 188 023*66", "note": "1. Paikaji沖繩料理(至24:00) 2. 鐵板燒肉Omoro 3. 牛神豚神涮涮鍋", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Paikaji+Okinawa+Main+Branch"},
+      {"day": "D2", "date": "08/23 (日)", "type": "租車", "time": "09:30 前", "item": "退房 那霸歌町大和Roynet PREMIER飯店", "location": "那霸市區", "mapcode": "33 188 023*66", "note": "退房後步行至對面 T Galleria DFS 2F ORIX 櫃檯", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Daiwa+Roynet+Hotel+Naha-Omoromachi+Premier"},
+      {"day": "D2", "date": "08/23 (日)", "type": "租車", "time": "10:00 - 10:30", "item": "ORIX 租車取車 (Fit同等級 SA)", "location": "T Galleria DFS 2樓", "mapcode": "33 188 353*26", "note": "預約號: 247199686 (密碼: aa42bb81) / 現場付 27,480 日圓", "mapUrl": "https://tc.tabirai.net/car/okinawa/company/orix/branch/?PID=2013"},
+      {"day": "D2", "date": "08/23 (日)", "type": "購物", "time": "11:00 - 15:00", "item": "永旺夢樂城 沖繩來客夢 (AEON Rycom)", "location": "北中城村ライカム1番地", "mapcode": "33 310 515*45", "note": "沖繩最大購物中心：1F 巨型大水族箱、寶可夢中心、美食街午餐", "mapUrl": "https://www.google.com/maps/search/?api=1&query=AEON+MALL+Okinawa+Rycom"},
+      {"day": "D2", "date": "08/23 (日)", "type": "飯店", "time": "15:15 - 15:45", "item": "Ref Okinawa Arena by Vessel Hotels (第2晚)", "location": "沖繩市諸見里 1766", "mapcode": "33 565 698*43", "note": "飯店Check-in放行李（易遊網: ORD0002991851）", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Ref+Okinawa+Arena+by+Vessel+Hotels"},
+      {"day": "D2", "date": "08/23 (日)", "type": "景點", "time": "16:15 - 18:00", "item": "東南植物樂園 (日間餵動物)", "location": "沖繩市知花 2146", "mapcode": "33 742 533*88", "note": "親手觸摸餵食水豚、松鼠猴、羊駝、陸龜，搭乘遊園小火車", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Southeast+Botanical+Gardens+Okinawa"},
+      {"day": "D2", "date": "08/23 (日)", "type": "景點", "time": "19:00 - 20:00", "item": "東南植物樂園 (南國ECO夏季點燈秀)", "location": "沖繩市知花 2146", "mapcode": "33 742 533*88", "note": "18:00~19:00休園整備，19:00點燈後欣賞夢幻水上光雕與雷射秀", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Southeast+Botanical+Gardens+Okinawa"},
+      {"day": "D2", "date": "08/23 (日)", "type": "景點", "time": "20:30 - 22:30", "item": "美濱美國村 (American Village) ＆ 宵夜", "location": "北谷町美濱", "mapcode": "33 526 452*71", "note": "欣賞美國村夜景點燈、海濱散步，品嚐 Blue Seal 冰淇淋或美式宵夜", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Mihama+American+Village"},
+      {"day": "D3", "date": "08/24 (一)", "type": "美食", "time": "08:30 - 09:45", "item": "美國村人氣海景早午餐 (二選一)", "location": "北谷町美濱 / 砂邊海岸", "mapcode": "33 526 452*71", "note": "1. WaGyu-Cafe KAPUKA 2. Hale'aina HOA (夏威夷早午餐)", "mapUrl": "https://www.google.com/maps/search/?api=1&query=WaGyu-Cafe+KAPUKA"},
+      {"day": "D3", "date": "08/24 (一)", "type": "景點", "time": "10:15 - 12:00", "item": "沖繩兒童王國 或 萬座毛 (二選一)", "location": "沖繩市胡屋 / 恩納村", "mapcode": "33 534 394*33", "note": "• 兒童王國(33534394) / 萬座毛(206 282 879*75)", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Okinawa+Children's+World+Zoo+and+Museum"},
+      {"day": "D3", "date": "08/24 (一)", "type": "美食", "time": "12:30 - 13:30", "item": "A&W 美式漢堡 (恩納店 / 沿途門市)", "location": "恩納村沿途", "mapcode": "206 312 038*33", "note": "沖繩必吃：The A&W 漢堡、捲捲薯條、Root Beer 麥根沙士", "mapUrl": "https://www.google.com/maps/search/?api=1&query=A&W+Burger+Okinawa"},
+      {"day": "D3", "date": "08/24 (一)", "type": "景點", "time": "14:30 - 16:30", "item": "部瀨名海中公園 (Busena Marine Park)", "location": "名護市喜瀨 1744-1", "mapcode": "206 432 236*77", "note": "1. 鯨魚玻璃底遊艇出海巡航 2. 水深5米海中展望塔360度近距離賞魚", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Busena+Marine+Park"},
+      {"day": "D3", "date": "08/24 (一)", "type": "飯店", "time": "17:15 - 18:00", "item": "沖繩餘家弗酒店 (第3晚)", "location": "名護市宮里 453-1", "mapcode": "206 598 875*33", "note": "名護市區飯店Check-in放行李（易遊網: ORD00030204596）", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Hotel+Yugaf+Inn+Okinawa"},
+      {"day": "D3", "date": "08/24 (一)", "type": "美食", "time": "18:30 - 20:00", "item": "名護市區精選晚餐 (二選一)", "location": "名護市區 (車程3-5分)", "mapcode": "206 598 600*44", "note": "1. 燒肉乃我那霸 (本部牛/阿古豬) 2. 名護曲餐廳 (平價定食)", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Nagomagari+Restaurant+Nago"},
+      {"day": "D3", "date": "08/24 (一)", "type": "購物", "time": "20:15 - 21:30", "item": "AEON 名護店 或 唐吉訶德名護店", "location": "名護商圈", "mapcode": "206 626 504*11", "note": "AEON超市(至23:00) / 唐吉訶德(至02:00) 採買名產零食", "mapUrl": "https://www.google.com/maps/search/?api=1&query=AEON+Nago+Shopping+Center"},
+      {"day": "D4", "date": "08/25 (二)", "type": "租車", "time": "08:15 - 08:30", "item": "退房 沖繩餘家弗酒店", "location": "名護市", "mapcode": "206 598 875*33", "note": "出發前往美麗海水族館 (車程約 30 分鐘)", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Hotel+Yugaf+Inn+Okinawa"},
+      {"day": "D4", "date": "08/25 (二)", "type": "景點", "time": "09:00 - 11:45", "item": "沖繩美麗海水族館", "location": "本部町字石川 424番地", "mapcode": "553 075 797*77", "note": "黑潮之海大水槽鯨鯊、鬼蝠魟、戶外海豚劇場秀 (Okichan Show)", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Okinawa+Churaumi+Aquarium"},
+      {"day": "D4", "date": "08/25 (二)", "type": "美食", "time": "12:15 - 14:15", "item": "古宇利島 ＆ KOURI SHRIMP 蝦蝦飯", "location": "今歸仁村古宇利 314", "mapcode": "485 692 116*52", "note": "奔馳古宇利跨海大橋，享用蒜香奶油蝦蝦飯、海灘踏浪", "mapUrl": "https://www.google.com/maps/search/?api=1&query=KOURI+SHRIMP+Kouri+Island"},
+      {"day": "D4", "date": "08/25 (二)", "type": "美食", "time": "14:45 - 15:30", "item": "許田休息站 (道の駅 許田)", "location": "名護市字許田 17-1", "mapcode": "206 476 706*55", "note": "三矢本舖現炸開口笑 (沙翁)，隨後由許田 IC 上高速回那霸", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Roadside+Station+Kyoda"},
+      {"day": "D4", "date": "08/25 (二)", "type": "租車", "time": "16:45 - 17:30", "item": "ORIX 還車 (Omoromachi站前店)", "location": "T Galleria DFS 2樓", "mapcode": "33 188 353*26", "note": "DFS 附近加油站加滿油保留收據，18:00 前準時還車", "mapUrl": "https://tc.tabirai.net/car/okinawa/company/orix/branch/?PID=2013"},
+      {"day": "D4", "date": "08/25 (二)", "type": "飯店", "time": "17:45 - 18:30", "item": "那霸歌町大和Roynet PREMIER飯店", "location": "那霸市歌町 4-2-14", "mapcode": "33 188 023*66", "note": "還車後步行1分鐘回對面飯店辦理 Check-in", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Daiwa+Roynet+Hotel+Naha-Omoromachi+Premier"},
+      {"day": "D4", "date": "08/25 (二)", "type": "購物", "time": "18:45 - 21:00", "item": "Sports Depo 天久旗艦店 ＆ 晚餐", "location": "天久樂市商圈", "mapcode": "33 188 612*45", "note": "步行12-14分(搭車3分)至Sports Depo採買球鞋裝備，新都心晚餐", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Sports+Depo+Ameku+Store"},
+      {"day": "D5", "date": "08/26 (三)", "type": "景點", "time": "09:00 - 09:50", "item": "飯店出發搭乘巴士前往玉泉洞", "location": "那霸 ➔ 南城市玉泉洞", "mapcode": "232 495 330*03", "note": "【交通方式】步行至「おもろまち駅前」搭 83 號玉泉洞線直達", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Okinawa+World+Gyokusendo"},
+      {"day": "D5", "date": "08/26 (三)", "type": "景點", "time": "10:00 - 13:00", "item": "沖繩世界文化王國・玉泉洞", "location": "南城市玉城前川 1336", "mapcode": "232 495 330*03", "note": "1. 玉泉洞鐘乳石 2. 太鼓秀 3. 開蚌DIY珍珠 4. 園區享用午餐", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Okinawa+World+Gyokusendo"},
+      {"day": "D5", "date": "08/26 (三)", "type": "購物", "time": "13:00 - 14:00", "item": "搭巴士回歌町 轉往 PARCO CITY", "location": "南城市 ➔ 浦添海濱", "mapcode": "33 341 022*87", "note": "搭 83 號公車回歌町站，叫 Uber / 計程車 直達 PARCO CITY (~1800日圓)", "mapUrl": "https://www.google.com/maps/search/?api=1&query=SAN-A+Urasoe+West+Coast+PARCO+CITY"},
+      {"day": "D5", "date": "08/26 (三)", "type": "購物", "time": "14:00 - 17:30", "item": "SAN-A 浦添西海岸 PARCO CITY", "location": "浦添市西洲 3-1-1", "mapcode": "33 341 022*87", "note": "超大海景商場：超過250家店鋪、無敵海景美食街、阿卡將本舖", "mapUrl": "https://www.google.com/maps/search/?api=1&query=SAN-A+Urasoe+West+Coast+PARCO+CITY"},
+      {"day": "D5", "date": "08/26 (三)", "type": "美食", "time": "18:00 - 19:30", "item": "JACK'S STEAK HOUSE (傑克牛排)", "location": "那霸市西 4-11-1", "mapcode": "33 156 077*25", "note": "搭單軌至「旭橋站」步行前往享用：特選菲力牛排 (Tenderloin)", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Jack's+Steak+House+Naha"},
+      {"day": "D5", "date": "08/26 (三)", "type": "美食", "time": "19:45 - 22:00", "item": "國際通商店街 ＆ 暖暮拉麵", "location": "那霸市國際通 / 牧志", "mapcode": "33 157 433*55", "note": "國際通散策採買伴手禮，宵夜品嚐暖暮拉麵 (牧志店營業至 02:00)", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Kokusai+Dori+Naha"},
+      {"day": "D6", "date": "08/27 (四)", "type": "飯店", "time": "09:00 - 09:30", "item": "【退房與行李寄放】", "location": "那霸市歌町", "mapcode": "33 188 023*66", "note": "辦理退房並將大件行李寄放於飯店櫃檯，輕裝出發市區觀光", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Daiwa+Roynet+Hotel+Naha-Omoromachi+Premier"},
+      {"day": "D6", "date": "08/27 (四)", "type": "景點", "time": "09:45 - 11:15", "item": "波上宮 ＆ 波之上海灘", "location": "那霸市若狹 1-25-11", "mapcode": "33 185 033*52", "note": "搭計程車/Uber約 10 分鐘直達。參拜琉球八社之首，漫步波之上海灘", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Naminoue+Shrine"},
+      {"day": "D6", "date": "08/27 (四)", "type": "美食", "time": "11:30 - 13:15", "item": "第一牧志公設市場", "location": "那霸市松尾 2-10-1", "mapcode": "33 157 554*77", "note": "搭計程車或單軌至牧志站。1F 挑選龍蝦/生魚片 ➔ 2F 代客料理品嚐午餐", "mapUrl": "https://www.google.com/maps/search/?api=1&query=First+Makishi+Public+Market"},
+      {"day": "D6", "date": "08/27 (四)", "type": "景點", "time": "13:45 - 16:30", "item": "首里城公園", "location": "那霸市首里當藏町 3-1", "mapcode": "33 161 526*67", "note": "搭單軌至「首里站」。漫步守禮門，參觀「見學展望區域」近距離看正殿修復", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Shurijo+Castle"},
+      {"day": "D6", "date": "08/27 (四)", "type": "飯店", "time": "16:45 - 17:30", "item": "【返回飯店領取行李】", "location": "那霸市歌町", "mapcode": "33 188 023*66", "note": "搭單軌回歌町站，至飯店領取行李，做最後行李打包與整理", "mapUrl": "https://www.google.com/maps/search/?api=1&query=Daiwa+Roynet+Hotel+Naha-Omoromachi+Premier"},
+      {"day": "D6", "date": "08/27 (四)", "type": "航班", "time": "17:45 - 18:30", "item": "搭單軌前往那霸機場 (OKA) 3F", "location": "那霸機場 3F 出境大廳", "mapcode": "33 113 562*45", "note": "由歌町站搭單軌直達那霸機場（約 20 分鐘），至長榮櫃檯辦理登機", "mapUrl": "https://maps.app.goo.gl/9xN7L2K4x2x2"},
+      {"day": "D6", "date": "08/27 (四)", "type": "航班", "time": "20:20 - 20:55", "item": "長榮航空 BR185 (A321)", "location": "那霸 (OKA) ➔ 桃園機場 (T2)", "mapcode": "33 113 562*45", "note": "訂位代號: DASWVQ / 行李 23kg/人 / 順利返抵國門", "mapUrl": "https://maps.app.goo.gl/9xN7L2K4x2x2"}
+    ];
+
+    const defaultVoucherData = [
+      { cat: "🚗 ORIX 租車", dates: "08/23 10:00\n～ 08/25 18:00", name: "ORIX 租車 (Fit 同等級 / SA 禁菸車)", plat: "Tabirai / ORIX\n預約號: 247199686\n密碼: aa42bb81", cost: "現場付款 27,480 日圓\n(含RAP安心包+免責+ETC)", contact: "TEL: 098-867-0543\nOmoromachi站前店 (DFS 2F)", mapUrl: "https://tc.tabirai.net/car/okinawa/company/orix/branch/?PID=2013" },
+      { cat: "🏨 飯店 (第1晚)", dates: "08/22 (六)\n～ 08/23 (日)", name: "那霸歌町大和Roynet PREMIER飯店", plat: "Trip.com\n訂單: 1616329681528003\nPIN: 9060", cost: "線上已付款\nTWD 3,611 (含稅)", contact: "TEL: +81-98-8625055\n那霸市歌町4-2-14", mapUrl: "https://www.google.com/maps/search/?api=1&query=Daiwa+Roynet+Hotel+Naha-Omoromachi+Premier" },
+      { cat: "🏨 飯店 (第2晚)", dates: "08/23 (日)\n～ 08/24 (一)", name: "沖繩競技場 Ref Okinawa Arena Hotel", plat: "易遊網\n訂單: ORD0002991851\n確認號: 1128147900164556", cost: "已全額支付\n(含大浴場/無早餐)", contact: "TEL: +81-98-9336111\n沖繩市諸見里1766", mapUrl: "https://www.google.com/maps/search/?api=1&query=Ref+Okinawa+Arena+by+Vessel+Hotels" },
+      { cat: "🏨 飯店 (第3晚)", dates: "08/24 (一)\n～ 08/25 (二)", name: "沖繩餘家弗酒店 (Hotel Yugaf Inn Okinawa)", plat: "易遊網\n訂單: ORD00030204596\n確認號: 1128147922009773", cost: "現場待扣款 / 支付\n(超值雙人房/無餐)", contact: "TEL: +81-980-530031\n名護市宮里453-1", mapUrl: "https://www.google.com/maps/search/?api=1&query=Hotel+Yugaf+Inn+Okinawa" },
+      { cat: "🏨 飯店 (第4-5晚)", dates: "08/25 (二)\n～ 08/27 (四)", name: "那霸歌町大和Roynet PREMIER飯店", plat: "易遊網\n訂單: ORD00030096340\n確認號: 1128147796871020", cost: "已全額支付\n(連住 2 晚 / 1張大床)", contact: "TEL: +81-98-8625055\n那霸市歌町4-2-14", mapUrl: "https://www.google.com/maps/search/?api=1&query=Daiwa+Roynet+Hotel+Naha-Omoromachi+Premier" }
+    ];
+
+    const generateGoogleMapsUrl = (item, location) => {
+      const query = `${item} ${location}`.trim();
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+    };
+
+    function App() {
+      const [groupId, setGroupId] = useState('okinawa2026');
+      const [user, setUser] = useState(null);
+      const [isCloudConnected, setIsCloudConnected] = useState(false);
+      const [isSyncing, setIsSyncing] = useState(false);
+
+      const [activeTab, setActiveTab] = useState('ALL');
+      const [searchQuery, setSearchQuery] = useState('');
+      const [categoryFilter, setCategoryFilter] = useState('ALL');
+      const [viewMode, setViewMode] = useState('card');
+      const [toast, setToast] = useState({ show: false, message: '' });
+
+      const [itineraryData, setItineraryData] = useState(defaultItineraryData);
+      const [voucherData, setVoucherData] = useState(defaultVoucherData);
+      const fileInputRef = useRef(null);
+
+      const [showGroupModal, setShowGroupModal] = useState(false);
+      const [newGroupIdInput, setNewGroupIdInput] = useState('');
+      const [showDeleteModal, setShowDeleteModal] = useState(false);
+      const [deleteIndex, setDeleteIndex] = useState(null);
+
+      // 網址參數初始化
+      useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const gParam = params.get('group');
+        if (gParam && gParam.trim() !== '') {
+          setGroupId(gParam.trim());
+        }
+      }, []);
+
+      // 匿名登入
+      useEffect(() => {
+        if (!auth) return;
+        auth.signInAnonymously().catch(err => console.error("Auth Error:", err));
+        const unsubscribe = auth.onAuthStateChanged(u => setUser(u));
+        return () => unsubscribe();
+      }, []);
+
+      // Firestore 即時監聽與同步
+      useEffect(() => {
+        if (!db || !user) {
+          setIsCloudConnected(false);
+          return;
+        }
+
+        const groupDocRef = db.collection('okinawa_trips').doc(groupId);
+        setIsSyncing(true);
+
+        const unsubscribe = groupDocRef.onSnapshot((docSnap) => {
+          setIsSyncing(false);
+          setIsCloudConnected(true);
+          if (docSnap.exists) {
+            const data = docSnap.data();
+            if (data.itinerary && Array.isArray(data.itinerary)) {
+              setItineraryData(data.itinerary);
+            }
+            if (data.vouchers && Array.isArray(data.vouchers)) {
+              setVoucherData(data.vouchers);
+            }
+          } else {
+            groupDocRef.set({
+              itinerary: defaultItineraryData,
+              vouchers: defaultVoucherData,
+              createdAt: new Date().toISOString(),
+              updatedBy: user.uid
+            }).catch(err => console.error("Error seeding doc:", err));
+          }
+        }, (err) => {
+          console.error("Firestore sync error:", err);
+          setIsCloudConnected(false);
+          setIsSyncing(false);
+        });
+
+        return () => unsubscribe();
+      }, [user, groupId]);
+
+      const saveToCloud = (newItinerary, newVouchers = voucherData) => {
+        setItineraryData(newItinerary);
+        if (newVouchers) setVoucherData(newVouchers);
+
+        if (db && user) {
+          setIsSyncing(true);
+          const groupDocRef = db.collection('okinawa_trips').doc(groupId);
+          groupDocRef.set({
+            itinerary: newItinerary,
+            vouchers: newVouchers,
+            updatedAt: new Date().toISOString(),
+            updatedBy: user.uid
+          }, { merge: true })
+          .then(() => setIsSyncing(false))
+          .catch(err => {
+            console.error("Save error:", err);
+            setIsSyncing(false);
+          });
+        }
+      };
+
+      const showToast = (message) => {
+       
